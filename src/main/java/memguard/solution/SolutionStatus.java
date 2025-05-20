@@ -1,4 +1,4 @@
-package memguard.solver.solution;
+package memguard.solution;
 
 public enum SolutionStatus {
 	UNFEASIBLE, FEASIBLE, OPTIMAL;

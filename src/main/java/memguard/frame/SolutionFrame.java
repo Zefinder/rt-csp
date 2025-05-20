@@ -11,7 +11,7 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 
-import memguard.solver.solution.Solution;
+import memguard.solution.Solution;
 
 public class SolutionFrame extends JFrame {
 

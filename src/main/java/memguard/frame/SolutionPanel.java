@@ -9,9 +9,8 @@ import java.awt.RenderingHints;
 
 import javax.swing.JPanel;
 
-import memguard.solver.solution.Solution;
-import memguard.solver.solution.SolutionColor;
-import memguard.solver.solution.SolutionItem;
+import memguard.solution.Solution;
+import memguard.solution.items.SolutionItem;
 
 public class SolutionPanel extends JPanel {
 
@@ -36,7 +35,7 @@ public class SolutionPanel extends JPanel {
 
 		int processorNumber = solution.getSolutionItems().length;
 		int solutionLength = solution.getSolutionLength();
-		
+
 		this.setPreferredSize(new Dimension(2 * PANEL_WIDTH_INSET + solutionLength * ITEM_UNIT_LENGTH,
 				2 * PANEL_HEIGHT_INSET + processorNumber * PROCESSOR_TOP_INSET));
 	}
@@ -67,10 +66,9 @@ public class SolutionPanel extends JPanel {
 		g2d.fillRect(0, 0, 2 * PANEL_WIDTH_INSET + solutionLength * ITEM_UNIT_LENGTH,
 				2 * PANEL_HEIGHT_INSET + solution.getSolutionItems().length * PROCESSOR_TOP_INSET);
 		g2d.setStroke(new BasicStroke(1.5f));
-		
+
 		int currentX = PANEL_WIDTH_INSET;
 		int currentY = PANEL_HEIGHT_INSET;
-		int currentProcessor = 0;
 
 		for (SolutionItem[] solutionItem : solution.getSolutionItems()) {
 			// Draw the first line
@@ -85,17 +83,14 @@ public class SolutionPanel extends JPanel {
 				}
 
 				// Draw item (if empty just ignore)
-				if (!item.isEmpty()) {
-					Color color;
-					if (item.isStall()) {
-						color = SolutionColor.STALL.getNormalColor();
-					} else {						
-						color = SolutionColor.getColor(currentProcessor, item.isSharedResource());
-					}
+				Color color = item.getItemColor();
+				if (color != null) {
 					g2d.setColor(color);
-					g2d.fillRect(currentX, currentY - ITEM_UNIT_HEIGHT, ITEM_UNIT_LENGTH * item.getLength(), ITEM_UNIT_HEIGHT);
+					g2d.fillRect(currentX, currentY - ITEM_UNIT_HEIGHT, ITEM_UNIT_LENGTH * item.getLength(),
+							ITEM_UNIT_HEIGHT);
 					g2d.setColor(Color.black);
-					g2d.drawRect(currentX, currentY - ITEM_UNIT_HEIGHT, ITEM_UNIT_LENGTH * item.getLength(), ITEM_UNIT_HEIGHT);
+					g2d.drawRect(currentX, currentY - ITEM_UNIT_HEIGHT, ITEM_UNIT_LENGTH * item.getLength(),
+							ITEM_UNIT_HEIGHT);
 				}
 				currentX += item.getLength() * ITEM_UNIT_LENGTH;
 
@@ -107,7 +102,6 @@ public class SolutionPanel extends JPanel {
 
 			currentX = PANEL_WIDTH_INSET;
 			currentY += PROCESSOR_TOP_INSET;
-			currentProcessor += 1;
 		}
 	}
 }

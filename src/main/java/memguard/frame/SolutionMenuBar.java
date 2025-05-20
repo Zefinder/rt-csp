@@ -1,5 +1,6 @@
 package memguard.frame;
 
+import java.awt.Color;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
@@ -18,9 +19,8 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 
-import memguard.solver.solution.Solution;
-import memguard.solver.solution.SolutionColor;
-import memguard.solver.solution.SolutionItem;
+import memguard.solution.Solution;
+import memguard.solution.items.SolutionItem;
 
 public class SolutionMenuBar extends JMenuBar {
 
@@ -128,6 +128,7 @@ public class SolutionMenuBar extends JMenuBar {
 		private static final float ITEMS_X_START_POSITION = 1f;
 
 		// String constants
+		private static final String COLOR_RGB = "{rgb,255:red,%d; green,%d; blue,%d}";
 		private static final String PROCESSOR_TEXT = """
 				\\draw (%s,%s) node[align=center,scale=0.8,text width=1.2cm] {$P_%d$};\n""";
 
@@ -197,17 +198,16 @@ public class SolutionMenuBar extends JMenuBar {
 								FORMATTER.format(currentX), FORMATTER.format(endVArrowY));
 					}
 
-					if (!item.isEmpty()) {
-						String color;
-						if (item.isStall()) {
-							color = SolutionColor.STALL.getNormalColorString();
-						} else {
-							color = SolutionColor.getColorString(i, item.isSharedResource());
-						}
-
+					Color color = item.getItemColor();
+					if (color != null) {
+						int r = color.getRed();
+						int g = color.getGreen();
+						int b = color.getBlue();
+						String colorString = COLOR_RGB.formatted(r, g, b);
+						
 						float endItemX = currentX + UNIT_WIDTH * item.getLength();
 						float endItemY = currentY + UNIT_HEIGHT;
-						latexCode += RECTANGLE.formatted(color, FORMATTER.format(currentX), FORMATTER.format(currentY),
+						latexCode += RECTANGLE.formatted(colorString, FORMATTER.format(currentX), FORMATTER.format(currentY),
 								FORMATTER.format(endItemX), FORMATTER.format(endItemY));
 					}
 					currentX += UNIT_WIDTH * item.getLength();

@@ -1,7 +1,7 @@
 package memguard.solver;
 
 import memguard.logic.System;
-import memguard.solver.solution.Solution;
+import memguard.solution.Solution;
 
 /**
  * Solvers and solutions have a naming convention to know what they correspond

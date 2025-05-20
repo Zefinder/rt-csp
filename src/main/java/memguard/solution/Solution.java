@@ -1,9 +1,10 @@
-package memguard.solver.solution;
+package memguard.solution;
 
 import java.io.File;
 import java.io.IOException;
 
 import memguard.frame.SolutionFrame;
+import memguard.solution.items.SolutionItem;
 
 public class Solution {
 

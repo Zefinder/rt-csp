@@ -9,7 +9,7 @@ import javax.swing.JOptionPane;
 
 import com.google.ortools.Loader;
 
-import memguard.solver.solution.Solution;
+import memguard.solution.Solution;
 
 /**
  * <p>
@@ -33,7 +33,12 @@ public abstract class Solver {
 	private static boolean areNativeLibsLoaded = false;
 	
 	public Solver() {
-		// Check if libraries are loaded
+		init();
+	}
+	
+	public abstract Solution solve(boolean verbose);
+
+	public static final void init() {
 		if (!areNativeLibsLoaded) {			
 			// Load native libraries
 			Loader.loadNativeLibraries();
@@ -47,8 +52,6 @@ public abstract class Solver {
 		}
 	}
 	
-	public abstract Solution solve(boolean verbose);
-
 	private static enum MessageNature {
 		INFO, ERROR;
 	}

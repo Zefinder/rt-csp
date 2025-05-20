@@ -2,10 +2,10 @@ package memguard.main;
 
 import memguard.logic.MemguardSystem;
 import memguard.logic.MemoryTask;
+import memguard.solution.Solution;
+import memguard.solution.SolutionStatus;
 import memguard.solver.memguardUU1C1B.MemguardUU1C1B;
 import memguard.solver.memguardUU1C1B.MemguardUU1C1BUpgraded;
-import memguard.solver.solution.Solution;
-import memguard.solver.solution.SolutionStatus;
 
 public class MainMemguardUU1C1B {
 
@@ -39,5 +39,4 @@ public class MainMemguardUU1C1B {
 		System.out.println("Solving time comparison: %.04f ms vs %.04f ms".formatted(solutionv1.getSolvingTime(),
 				solutionv2.getSolvingTime()));
 	}
-
 }

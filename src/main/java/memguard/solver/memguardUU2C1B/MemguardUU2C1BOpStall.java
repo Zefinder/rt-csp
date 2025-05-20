@@ -1,7 +1,5 @@
 package memguard.solver.memguardUU2C1B;
 
-import java.util.ArrayList;
-
 import com.google.ortools.sat.BoolVar;
 import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
@@ -12,24 +10,32 @@ import com.google.ortools.sat.LinearExprBuilder;
 import com.google.ortools.sat.Literal;
 
 import memguard.logic.MemguardRWSystem;
-import memguard.logic.MemguardSystem;
 import memguard.logic.ReadWriteTask;
 import memguard.logic.Task;
+import memguard.solution.Solution;
+import memguard.solution.SolutionBuilder;
+import memguard.solution.SolutionStatus;
 import memguard.solver.MemguardSolver;
-import memguard.solver.solution.Solution;
-import memguard.solver.solution.SolutionItem;
-import memguard.solver.solution.SolutionStatus;
+import memguard.solver.Solver;
 
 public class MemguardUU2C1BOpStall extends MemguardSolver {
 
+	private int overhead;
+
+	public MemguardUU2C1BOpStall(MemguardRWSystem system, int overhead) {
+		super(system);
+		this.overhead = overhead;
+	}
+
 	/**
 	 * This will compute the worst-case response time of a task in a system. This
-	 * system contains m processors and only one task (to simplify the process).
+	 * system contains m processors and only one task (to simplify the process). The
+	 * default overhead will be the write latency - 1
 	 * 
 	 * @param system the MemGuard's system with one task
 	 */
-	public MemguardUU2C1BOpStall(MemguardSystem system) {
-		super(system);
+	public MemguardUU2C1BOpStall(MemguardRWSystem system) {
+		this(system, system.getWriteLatency() - 1);
 	}
 
 	@Override
@@ -52,7 +58,7 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 		int budget = rwsystem.getBudget(0);
 		int readLatency = rwsystem.getReadLatency();
 		int writeLatency = rwsystem.getWriteLatency();
-		int regulationPeriod = rwsystem.getRegulationPeriod() - writeLatency + 1;
+		int regulationPeriod = rwsystem.getRegulationPeriod() - overhead;
 		int interferenceProcessorNumber = processorNumber - 1;
 		int remainingBudget = regulationPeriod - budget;
 		int maxInterferenceAccess = Math.ceilDiv(remainingBudget, interferenceProcessorNumber * writeLatency);
@@ -123,6 +129,9 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 		BoolVar[] maxStallVariables = new BoolVar[maxPeriodNumber];
 		BoolVar[] periodFilledNoVoidVariables = new BoolVar[maxPeriodNumber];
 		BoolVar[] periodFilledNoOperationStallVariables = new BoolVar[maxPeriodNumber];
+		
+		// Create debug variable to count the constraints
+		int constraintDebug = 0;
 
 		// Define integer variables
 		for (int i = 0; i < maxPeriodNumber; i++) {
@@ -291,6 +300,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			model.addDifferent(accessesNoStallExpr, regulationPeriod).onlyEnforceIf(periodFilledNoOperationStall.not());
 			periodFilledNoOperationStallVariables[i] = periodFilledNoOperationStall;
 		}
+		
+		if (Solver.DEBUG) {
+			constraintDebug = model.getBuilder().getConstraintsCount();
+			System.out.println("Constraints to fix booleans: #0 -> #" + (constraintDebug - 1));
+		}
 
 		// Constraints
 		// Max possible read access
@@ -299,6 +313,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			maxReadExprBuilder.addTerm(readAccessVariables[i], readLatency).build();
 		}
 		model.addEquality(maxReadExprBuilder.build(), readCost);
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Max possible read access constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Max possible write access
 		LinearExprBuilder maxWriteExprBuilder = LinearExpr.newBuilder();
@@ -306,10 +325,20 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			maxWriteExprBuilder.addTerm(writeAccessVariables[i], writeLatency).build();
 		}
 		model.addEquality(maxWriteExprBuilder.build(), writeCost);
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Max possible write access constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Max possible computation
 		LinearExpr maxComputationExpr = LinearExpr.newBuilder().addSum(computationAccessVariables).build();
 		model.addEquality(maxComputationExpr, computationCost);
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Max possible computation constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Constraint budget per period
 		for (int i = 0; i < maxPeriodNumber; i++) {
@@ -317,13 +346,23 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 					.addTerm(writeAccessVariables[i], writeLatency).build();
 			model.addLessOrEqual(memoryAccessExpr, budget);
 		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Max possible memory access per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Compute remaining budget per period
 		for (int i = 0; i < maxPeriodNumber; i++) {
 			LinearExpr remainingBudgetExpr = LinearExpr.newBuilder().add(budget)
 					.addTerm(readAccessVariables[i], -readLatency).addTerm(writeAccessVariables[i], -writeLatency)
 					.build();
-			model.addEquality(remainingBudgetVariables[i], remainingBudgetExpr); // #32
+			model.addEquality(remainingBudgetVariables[i], remainingBudgetExpr);
+		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Remaining budget per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
 		}
 
 		// Compute stall per period
@@ -337,6 +376,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			model.addEquality(stallVariables[i], remainingBudget).onlyEnforceIf(maxStallVariables[i]);
 			// Otherwise the stall is (m - 1) * m^i
 			model.addEquality(stallVariables[i], totalAccessStallExpr).onlyEnforceIf(maxStallVariables[i].not());
+		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Stall per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
 		}
 
 		// Enable read stall only when next one is a read, there is no write stall and
@@ -355,6 +399,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 				model.addEquality(readStallVariables[i], 0);
 			}
 		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Read stall per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Enable write stall only when next one is a write, there is no read stall and
 		// the period is not finished and the remaining budget is smaller than the write
@@ -372,6 +421,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 				model.addEquality(writeStallVariables[i], 0);
 			}
 		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Write stall per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		// Enable void only when nothing is left and period is not full (equivalence)
 		for (int i = 0; i < maxPeriodNumber; i++) {
@@ -381,6 +435,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			model.addBoolAnd(new Literal[] { voidAccessGreaterZeroVariables[i] })
 					.onlyEnforceIf(new Literal[] { readFinishedVariables[i], writeFinishedVariables[i],
 							computationFinishedVariables[i], periodFilledNoVoidVariables[i].not() });
+		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Void per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
 		}
 
 		// Constraint a period
@@ -392,6 +451,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 
 			LinearExpr usedResourcesExpr = usedResourcesExprBuilder.build();
 			model.addEquality(usedResourcesExpr, regulationPeriod);
+		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Max possible units per period constraints: #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
 		}
 
 		// Symmetry breaking:
@@ -410,6 +474,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 
 			model.addGreaterOrEqual(stallNowExpr, stallAfterExpr);
 		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Symmetry breaking 1 (decreasing stall): #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
+		}
 
 		/**
 		 * Sort per increasing computation use. This is purely esthetic since it will
@@ -420,6 +489,11 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 		for (int i = 0; i < maxPeriodNumber - 1; i++) {
 			model.addLessOrEqual(computationAccessVariables[i], computationAccessVariables[i + 1])
 					.onlyEnforceIf(voidAccessGreaterZeroVariables[i + 1].not());
+		}
+		if (Solver.DEBUG) {
+			int newValue = model.getBuilder().getConstraintsCount();
+			System.out.println("Symmetry breaking 2 (increasing computation): #%d -> #%d".formatted(constraintDebug, newValue));
+			constraintDebug = newValue;
 		}
 
 		// Add maximization
@@ -432,10 +506,18 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			System.out.println("Launching solver...");
 		}
 		CpSolver solver = new CpSolver();
-//		solver.getParameters().setLogToStdout(true);
-//		solver.getParameters().setLogToResponse(true);
-//		solver.getParameters().setLogSubsolverStatistics(true);
-//		solver.getParameters().setLogSearchProgress(true);
+		if (Solver.DEBUG) {
+			System.out.println("Constraint list: ");
+			int i = 0;
+			for (var c : model.getBuilder().getConstraintsList()) {
+				System.out.println("#" + i++ + " " + c.toString());
+			}
+
+			solver.getParameters().setLogToStdout(true);
+			solver.getParameters().setLogToResponse(true);
+			solver.getParameters().setLogSubsolverStatistics(true);
+			solver.getParameters().setLogSearchProgress(true);
+		}
 		CpSolverStatus status = solver.solve(model);
 
 		// If solution is optimal, say it!
@@ -447,13 +529,8 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 			}
 
 			// Write solution
-			ArrayList<SolutionItem> mainProcessorItems = new ArrayList<SolutionItem>();
-			ArrayList<ArrayList<SolutionItem>> interferingProcessorItems = new ArrayList<ArrayList<SolutionItem>>();
-			for (int i = 0; i < interferenceProcessorNumber; i++) {
-				interferingProcessorItems.add(new ArrayList<SolutionItem>());
-			}
-
 			long totalStall = solver.value(maximizationExpr);
+			SolutionBuilder builder = new SolutionBuilder(processorNumber);
 			for (int i = 0; i < maxPeriodNumber; i++) {
 				int readAccesses = (int) solver.value(readAccessVariables[i]);
 				int writeAccesses = (int) solver.value(writeAccessVariables[i]);
@@ -531,72 +608,49 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 						: solver.booleanValue(writeStallGreaterZeroVariables[i - 1]);
 
 				// Add an item with 0 length to begin
-				addStart(interferenceProcessorNumber, mainProcessorItems, interferingProcessorItems);
+				builder.addBeginPeriod();
 
 				// If read stall before, start with a read
 				if (lastPeriodReadStall) {
-					stall = addRead(interferenceProcessorNumber, stall, readLatency, writeLatency, mainProcessorItems,
-							interferingProcessorItems);
+					stall = addRead(builder, interferenceProcessorNumber, stall, readLatency, writeLatency);
 					readAccesses--;
 				}
 
 				// If write stall before, start with a write
 				if (lastPeriodWriteStall) {
-					stall = addWrite(interferenceProcessorNumber, stall, writeLatency, mainProcessorItems,
-							interferingProcessorItems);
+					stall = addWrite(builder, interferenceProcessorNumber, stall, writeLatency);
 					writeAccesses--;
 				}
 
-				// Add read (and stall if any)
 				for (int r = 0; r < readAccesses; r++) {
-					stall = addRead(interferenceProcessorNumber, stall, readLatency, writeLatency, mainProcessorItems,
-							interferingProcessorItems);
+					stall = addRead(builder, interferenceProcessorNumber, stall, readLatency, writeLatency);
 				}
 
 				// Add write (and stall if any)
 				for (int w = 0; w < writeAccesses; w++) {
-					stall = addWrite(interferenceProcessorNumber, stall, writeLatency, mainProcessorItems,
-							interferingProcessorItems);
+					stall = addWrite(builder, interferenceProcessorNumber, stall, writeLatency);
 				}
 
 				// Add computation
-				addComputation(interferenceProcessorNumber, computationAccesses, mainProcessorItems,
-						interferingProcessorItems);
+				builder.addComputation(computationAccesses, 0, true);
 
 				// Add remaining stall if any
-				addStall(interferenceProcessorNumber, stall, mainProcessorItems, interferingProcessorItems);
+				builder.addStall(stall, 0, true);
 
 				// Add read stall if any
-				addStall(interferenceProcessorNumber, readStall, mainProcessorItems, interferingProcessorItems);
+				builder.addStall(readStall, 0, true);
 
 				// Add write stall if any
-				addStall(interferenceProcessorNumber, writeStall, mainProcessorItems, interferingProcessorItems);
+				builder.addStall(writeStall, 0, true);
 
 				// Add void access
-				addVoid(interferenceProcessorNumber, voidAccesses, mainProcessorItems, interferingProcessorItems);
+				builder.addVoid(voidAccesses);
 
 				// Add an empty item to end
-				addEnd(interferenceProcessorNumber, mainProcessorItems, interferingProcessorItems);
+				builder.addEndPeriod();
 
 				// Add write latency - 1 to complete the period
-				addStall(interferenceProcessorNumber, writeLatency - 1, mainProcessorItems, interferingProcessorItems);
-			}
-
-			SolutionItem[][] solutionItems = new SolutionItem[processorNumber][];
-			SolutionItem[] mainSolutionItems = new SolutionItem[mainProcessorItems.size()];
-
-			for (int i = 0; i < mainProcessorItems.size(); i++) {
-				mainSolutionItems[i] = mainProcessorItems.get(i);
-			}
-			solutionItems[0] = mainSolutionItems;
-
-			for (int i = 1; i < processorNumber; i++) {
-				ArrayList<SolutionItem> itemList = interferingProcessorItems.get(i - 1);
-				SolutionItem[] interferenceSolutionItems = new SolutionItem[itemList.size()];
-				for (int j = 0; j < itemList.size(); j++) {
-					interferenceSolutionItems[j] = itemList.get(j);
-				}
-				solutionItems[i] = interferenceSolutionItems;
+				builder.addStall(overhead, 0, true);
 			}
 
 			if (verbose) {
@@ -604,7 +658,7 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 				System.out.println("Total stall: %d".formatted(totalStall));
 			}
 
-			solution = new Solution(SolutionStatus.valueOf(status.toString()), solutionItems);
+			solution = builder.build(SolutionStatus.valueOf(status.toString()));
 			if (verbose) {
 				System.out.println("Solution successfully created!");
 			}
@@ -623,102 +677,41 @@ public class MemguardUU2C1BOpStall extends MemguardSolver {
 		return solution;
 	}
 
-	private void addStart(int interferenceProcessorNumber, ArrayList<SolutionItem> mainProcessorItems,
-			ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		mainProcessorItems.add(new SolutionItem(0, true, true, false));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(0, true, true, false));
-		}
-	}
-
-	private void addEnd(int interferenceProcessorNumber, ArrayList<SolutionItem> mainProcessorItems,
-			ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		mainProcessorItems.add(new SolutionItem(0, true, false, true));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(0, true, false, true));
-		}
-	}
-
-	private int addRead(int interferenceProcessorNumber, int stall, int readLatency, int writeLatency,
-			ArrayList<SolutionItem> mainProcessorItems, ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		stall -= addInterProcessorStall(interferenceProcessorNumber, stall, writeLatency, mainProcessorItems,
-				interferingProcessorItems);
-		mainProcessorItems.add(new SolutionItem(readLatency, true));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(readLatency, false, true, false, false));
-		}
-
+	private int addRead(SolutionBuilder builder, int interferenceProcessorNumber, int stall, int readLatency,
+			int writeLatency) {
+		stall -= addInterProcessorStall(builder, interferenceProcessorNumber, stall, writeLatency);
+		builder.addSharedResource(readLatency, 0, true);
 		return stall;
 	}
 
-	private int addWrite(int interferenceProcessorNumber, int stall, int writeLatency,
-			ArrayList<SolutionItem> mainProcessorItems, ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		stall -= addInterProcessorStall(interferenceProcessorNumber, stall, writeLatency, mainProcessorItems,
-				interferingProcessorItems);
-		mainProcessorItems.add(new SolutionItem(writeLatency, true));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(writeLatency, false, true, false, false));
-		}
-
+	private int addWrite(SolutionBuilder builder, int interferenceProcessorNumber, int stall, int writeLatency) {
+		stall -= addInterProcessorStall(builder, interferenceProcessorNumber, stall, writeLatency);
+		builder.addSharedResource(writeLatency, 0, true);
 		return stall;
-	}
-
-	private void addComputation(int interferenceProcessorNumber, int computationAccesses,
-			ArrayList<SolutionItem> mainProcessorItems, ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		mainProcessorItems.add(new SolutionItem(computationAccesses, false));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(computationAccesses, true, false, false));
-		}
 	}
 
 	// Returns the number of stall unit put
-	private int addInterProcessorStall(int interferenceProcessorNumber, int remainingStall, int writeLatency,
-			ArrayList<SolutionItem> mainProcessorItems, ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
+	private int addInterProcessorStall(SolutionBuilder builder, int interferenceProcessorNumber, int remainingStall,
+			int writeLatency) {
 		int totalStall = 0;
 		if (remainingStall != 0) {
 			int stall = Math.min(interferenceProcessorNumber * writeLatency, remainingStall);
 			totalStall = stall;
 
-			// Fill main processor stall
-			mainProcessorItems.add(new SolutionItem(stall, true, false, false));
 			for (int i = 0; i < interferenceProcessorNumber; i++) {
 				// If no stall remaining, exit
 				if (stall == 0) {
 					break;
 				}
 
-				// Else use one stall unit
+				// Else use at most write latency stall unit
 				int placedStall = Math.min(writeLatency, stall);
 				stall -= placedStall;
-				for (int j = 0; j < interferenceProcessorNumber; j++) {
-					if (j == i) {
-						interferingProcessorItems.get(j).add(new SolutionItem(placedStall, true));
-					} else {
-						interferingProcessorItems.get(j).add(new SolutionItem(placedStall, false, true, false, false));
-					}
-				}
+				builder.addSharedResource(placedStall, i + 1, true);
 			}
 		}
 
 		return totalStall;
-	}
-
-	private void addStall(int interferenceProcessorNumber, int stallNumber, ArrayList<SolutionItem> mainProcessorItems,
-			ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		if (stallNumber > 0) {
-			mainProcessorItems.add(new SolutionItem(stallNumber, false, false, true, false, false));
-			for (int j = 0; j < interferenceProcessorNumber; j++) {
-				interferingProcessorItems.get(j).add(new SolutionItem(stallNumber, true, false, false));
-			}
-		}
-	}
-
-	private void addVoid(int interferenceProcessorNumber, int voidAccesses, ArrayList<SolutionItem> mainProcessorItems,
-			ArrayList<ArrayList<SolutionItem>> interferingProcessorItems) {
-		mainProcessorItems.add(new SolutionItem(voidAccesses, true, false, false));
-		for (int j = 0; j < interferenceProcessorNumber; j++) {
-			interferingProcessorItems.get(j).add(new SolutionItem(voidAccesses, true, false, false));
-		}
 	}
 
 }

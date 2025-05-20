@@ -4,7 +4,7 @@ import com.google.ortools.sat.CpModel;
 import com.google.ortools.sat.CpSolver;
 import com.google.ortools.sat.Literal;
 
-import memguard.solver.solution.Solution;
+import memguard.solution.Solution;
 
 public class SolverTest extends Solver {
 

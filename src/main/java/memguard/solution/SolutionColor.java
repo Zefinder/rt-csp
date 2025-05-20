@@ -1,4 +1,4 @@
-package memguard.solver.solution;
+package memguard.solution;
 
 import java.awt.Color;
 
@@ -35,7 +35,7 @@ public enum SolutionColor {
 	
 	public static Color getColor(int index, boolean isSharedResource) {
 		SolutionColor[] values = SolutionColor.values();
-		index = index % values.length;
+		index = index % (values.length - 1);
 		int shared = isSharedResource ? 1 : 0;
 
 		return values[index].solutionColor[shared];
